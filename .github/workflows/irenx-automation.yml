@@ -1,0 +1,85 @@
+name: IRENX Automation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: irenx-automation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate IRENX
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in index.html api/index.ts api/ai.ts src/omniroute/core-router.ts vercel.json manifest.webmanifest sw.js offline-engine.js offline.html .github/workflows/cloudflare-pages.yml; do
+            test -s "$f" || { echo "Missing: $f"; exit 1; }
+          done
+          echo "IRENX core + AI router + offline files OK"
+
+      - name: Scan for exposed secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          findings="$(grep -RInE --exclude-dir=.git --exclude='*.md' '(sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}|-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----|TWELVEDATA_API_KEY=[^[:space:]]+|CLOUDFLARE_API_TOKEN=[^[:space:]]+)' . || true)"
+          findings="$(printf '%s\n' "$findings" | grep -vF 'sk-dummy-key-to-bypass-oauth' || true)"
+          if [[ -n "$findings" ]]; then
+            printf '%s\n' "$findings"
+            echo 'Potential real secret detected in repository files.'
+            exit 1
+          fi
+          echo 'Secret scan OK'
+
+      - name: Validate workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'CLOUDFLARE_API_TOKEN' .github/workflows/cloudflare-pages.yml
+          grep -q 'CLOUDFLARE_ACCOUNT_ID' .github/workflows/cloudflare-pages.yml
+          grep -q 'wrangler pages deploy' .github/workflows/cloudflare-pages.yml
+          echo 'Cloudflare workflow checks OK'
+
+      - name: Validate offline integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'offline-engine.js' index.html
+          grep -q 'serviceWorker.register' index.html
+          grep -q 'manifest.webmanifest' index.html
+          grep -q 'IRENXOfflineBrain' offline-engine.js
+          grep -q 'NO TRADE' offline-engine.js
+          echo 'Offline PWA integration checks OK'
+
+      - name: Validate AI router
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'chatThroughOmniRoute' api/ai.ts
+          grep -q 'chooseRoute' api/ai.ts
+          grep -q 'classifyTask' src/omniroute/core-router.ts
+          grep -q 'CB_FAILURE_THRESHOLD' src/omniroute/core-router.ts
+          grep -q 'MAX_REQUESTS' src/omniroute/core-router.ts
+          grep -q 'MAX_TOKENS' src/omniroute/core-router.ts
+          grep -q 'REQUEST_TIMEOUT_MS' src/omniroute/core-router.ts
+          echo 'AI router validation OK'
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo 'IRENX automation validation completed successfully.'
+          echo "Commit: $GITHUB_SHA"
