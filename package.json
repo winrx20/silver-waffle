@@ -1,0 +1,23 @@
+{
+  "name": "irenx-ai",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:whatsapp": "wrangler deploy -c wrangler.whatsapp.toml",
+    "typecheck": "tsc --noEmit",
+    "cf:types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "5.9.3",
+    "wrangler": "latest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "agents": "latest",
+    "zod": "latest"
+  }
+}
